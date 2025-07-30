@@ -1,3 +1,4 @@
+import logging
 from flask import Flask, request, jsonify, send_from_directory
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
@@ -10,18 +11,21 @@ import os
 from typing import TypedDict, Annotated
 from dotenv import load_dotenv
 import asyncio
+import threading
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-INFERENCE_SERVER_OPENAI = os.getenv("LLAMA_STACK_SERVER_OPENAI")
+INFERENCE_SERVER_OPENAI = os.getenv("LLAMA_STACK_SERVER_OPENAI", "https://api.openai.com/v1")
 API_KEY=os.getenv("OPENAI_API_KEY", "not applicable")
-INFERENCE_MODEL=os.getenv("INFERENCE_MODEL")
+INFERENCE_MODEL=os.getenv("INFERENCE_MODEL", "gpt-4o-mini")
 
 # For example:
-INFERENCE_SERVER_OPENAI = "http://localhost:8321/v1/openai/v1"
-INFERENCE_MODEL = "gpt-4-turbo" #"llama3.2:3b-instruct-fp16"
-#INFERENCE_SERVER_OPENAI = "https://api.openai.com/v1"
-#INFERENCE_MODEL = "gpt-4o-mini"
+#INFERENCE_SERVER_OPENAI = "http://localhost:8321/v1/openai/v1"
+#INFERENCE_MODEL = "llama3.2:3b-instruct-fp16"
 
 llm = init_chat_model(
     INFERENCE_MODEL,
@@ -34,7 +38,7 @@ llm = init_chat_model(
 @tool
 def sendEmail(subject: str, body: str):
     """Send an email from with the given subject and body.  Do not use attachments"""
-    print(f"Sending email '{subject}' with body: {body}")
+    logger.info(f"Sending email '{subject}' with body: {body}")
 tools = [sendEmail]
 
 class State(TypedDict):
@@ -74,7 +78,7 @@ def github_llm_node(state: State):
         "server_url": repo_url,
         "require_approval": "never",
     }
-    print(mcp_tool)
+    logger.info(mcp_tool)
     github_tools = tools + [mcp_tool]
     github_llm = llm.bind_tools(github_tools)
     message = github_llm.invoke(state["messages"])
@@ -94,7 +98,7 @@ github_agent_builder.add_conditional_edges("llm_node", tools_condition)
 github_agent = github_agent_builder.compile()
 
 class TriageSchema(BaseModel):
-    """Analyze the unread email and route it according to its content."""
+    """Analyze the message and route it according to its content."""
 
     classification: Literal["topic", "github", "unknown"] = Field(
         description="The classification of the input: 'topic' if the input is a topic to research, "
@@ -106,7 +110,7 @@ def triage_agent(state: State):
     # Determine if the message is a topic or a GitHub reference
     triage_llm = llm.with_structured_output(TriageSchema)
     triage_result = triage_llm.invoke([{'role': 'user', 'content': 'Determine if the following message is a topic or a GitHub reference: ' + state['input']}])
-    print(f"Triage result: {triage_result}")
+    logger.info(f"Triage result: {triage_result}")
     if 'topic' == triage_result.classification:
         state['decision'] = 'topic'
         state['data'] = state['input']
@@ -135,15 +139,33 @@ overall_workflow.add_edge(START, "triage_agent")
 overall_workflow.add_conditional_edges("triage_agent", route_to_next_node)
 workflow = overall_workflow.compile()
 
+logger.info(overall_workflow.get_graph().draw_ascii()) 
+# you can also use draw_mermaid() instead, to render on https://mermaid.live
+
 async def invoke_workflow_async(idea):
     response = await asyncio.to_thread(workflow.invoke, {"input": idea})
     return response
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.')
 
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
+
+@app.route('/idea-vault.png')
+def idea_vault_image():
+    return send_from_directory('.', 'idea-vault.png')
+
+# Keep this here for serving the default image
+@app.route('/default-agent.png')
+def default_agent_image():
+    return send_from_directory('.', 'default-agent.png')
+
+def run_async_task(idea):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(invoke_workflow_async(idea))
+    loop.close()
 
 @app.route('/submit-idea', methods=['POST'])
 def submit_idea():
@@ -152,7 +174,7 @@ def submit_idea():
         return jsonify({'error': 'No idea provided'}), 400
 
     # Process the idea using your workflow asynchronously
-    asyncio.create_task(invoke_workflow_async(idea))
+    threading.Thread(target=run_async_task, args=(idea,)).start()
     return jsonify({'status': 'Processing started'})
 
 if __name__ == '__main__':

@@ -1,0 +1,12 @@
+Customer helper agent
+
+Based on a given customer name, I want to do a quick web search, to determine how Red Hat might be able to help the given
+customer with AI use cases.  I want the result to be sent as an email.
+
+--------------------------
+
+Write topic in a style
+
+I want an multi-agent collaboration where a first agent will take a given topic and generate a 2 paragraph description
+of the given topic.  The second agent will take this as input and update the text towards a given audience (children, 
+fiction or technical).  The result should be returned.
