@@ -1,0 +1,8 @@
+dotenv
+Flask
+grandalf
+langchain
+langchain-openai
+langgraph
+pydantic
+pytest

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-langgraph-agent
+  labels:
+    app: sample-langgraph-agent
+spec:
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: sample-langgraph-agent

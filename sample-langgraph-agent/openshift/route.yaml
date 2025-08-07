@@ -1,0 +1,12 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: sample-langgraph-agent
+  labels:
+    app: sample-langgraph-agent
+spec:
+  to:
+    kind: Service
+    name: sample-langgraph-agent
+  port:
+    targetPort: 5000

@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-langgraph-agent
+  labels:
+    app: sample-langgraph-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample-langgraph-agent
+  template:
+    metadata:
+      labels:
+        app: sample-langgraph-agent
+    spec:
+      containers:
+        - name: sample-langgraph-agent
+          image: quay.io/krisv/sample-langgraph-agent:latest
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - secretRef:
+                name: openai-api-key
+            - configMapRef:
+                name: sample-langgraph-config
